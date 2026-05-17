@@ -2027,7 +2027,7 @@ function onSearch(q){
   srchT=setTimeout(()=>searchEP(q,matches),450);
 }
 
-const EP_BASE="https://api.eliteprospects.com/v1",PROXY="https://corsproxy.io/?",EP_API_KEY="83a2dd04a7316e09617afbb324ee903f";
+const EP_BASE="https://api.eliteprospects.com/v1",PROXY="https://api.allorigins.win/raw?url=",EP_API_KEY="83a2dd04a7316e09617afbb324ee903f";
 async function searchEP(q,existing=[]){
   try{
     const url=PROXY+encodeURIComponent(EP_BASE+"/players?q="+encodeURIComponent(q)+"&limit=5&fields=id,name,country,position");
