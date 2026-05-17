@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/ep-api/:path*", "destination": "https://api.eliteprospects.com/v1/:path*" }
+  ]
+}
