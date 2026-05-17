@@ -1506,6 +1506,19 @@ table.stbl { width: 100%; border-collapse: collapse; font-size: 10px; min-width:
       </div>
     </div>
 
+    <!-- EP AUTOFILL SEARCH -->
+    <div style="margin-bottom:10px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+      <div style="font-family:var(--mono);font-size:7px;color:var(--hint);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">⚡ EliteProspects Autofill</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="ep-search-inp" type="text" placeholder="Search player by name…" autocomplete="off"
+          style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--ink);font-size:13px;font-family:var(--mono);"
+          oninput="epAutoSearch(this.value)"/>
+        <button onclick="epRunSearch()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">SEARCH</button>
+      </div>
+      <div id="ep-drop" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:6px;margin-top:4px;overflow:hidden;z-index:100;position:relative;"></div>
+      <div id="ep-msg" style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
+    </div>
+
     <!-- MANUAL ENTRY — PRIMARY (shown open) -->
     <div class="input-section" id="sec-manual">
       <div class="input-section-hd" onclick="toggleSection('sec-manual')">
@@ -4578,6 +4591,84 @@ function toggleManual(){toggleSection('sec-manual');}
   addManRow("D0","");
   addManRow("D+1","");
 })();
+
+// ── EP AUTOFILL (top search box) ──────────────────────────────
+const EP_KEY = "83a2dd04a7316e09617afbb324ee903f";
+let epTimer = null;
+
+function epAutoSearch(q) {
+  clearTimeout(epTimer);
+  if (q.length < 2) { document.getElementById('ep-drop').style.display = 'none'; return; }
+  epTimer = setTimeout(() => epFetchPlayers(q), 400);
+}
+
+function epRunSearch() {
+  const q = document.getElementById('ep-search-inp').value.trim();
+  if (q.length < 2) return;
+  epFetchPlayers(q);
+}
+
+async function epFetchPlayers(q) {
+  const msg = document.getElementById('ep-msg');
+  const drop = document.getElementById('ep-drop');
+  msg.textContent = 'Searching…';
+  drop.style.display = 'none';
+  try {
+    const url = `/ep-api/players?q=${encodeURIComponent(q)}&limit=6&fields=id,name,country,position&apiKey=${EP_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) { msg.textContent = 'EP API error: HTTP ' + res.status; return; }
+    const data = await res.json();
+    const players = data.data || [];
+    if (!players.length) { msg.textContent = 'No players found.'; return; }
+    msg.textContent = '';
+    drop.innerHTML = players.map(p =>
+      `<div onclick="epSelectPlayer(${p.id},'${p.name.replace(/'/g,"\'")}','${(p.position||'C').replace(/GOALIE/,'G').replace(/DEFENSEMAN/,'D').replace(/FORWARD/,'C')}')"
+        style="padding:8px 12px;cursor:pointer;font-family:var(--mono);font-size:12px;color:var(--ink);border-bottom:1px solid var(--border2);"
+        onmouseover="this.style.background='var(--hint)'" onmouseout="this.style.background=''"
+      >${p.name} <span style="color:var(--muted);font-size:10px;">${p.position||''} · ${p.country?.name||''}</span></div>`
+    ).join('');
+    drop.style.display = 'block';
+  } catch(e) {
+    msg.textContent = 'Network error: ' + e.message;
+  }
+}
+
+async function epSelectPlayer(id, name, pos) {
+  const msg = document.getElementById('ep-msg');
+  const drop = document.getElementById('ep-drop');
+  drop.style.display = 'none';
+  document.getElementById('ep-search-inp').value = name;
+  msg.textContent = 'Loading stats…';
+  try {
+    const sUrl = `/ep-api/players/${id}/stats?type=regular&limit=30&fields=season,league,gamesPlayed,goals,assists&apiKey=${EP_KEY}`;
+    const iUrl = `/ep-api/players/${id}?fields=id,name,position,nhlDraftPick&apiKey=${EP_KEY}`;
+    const [sr, ir] = await Promise.all([fetch(sUrl), fetch(iUrl)]);
+    const sData = await sr.json();
+    const iData = await ir.json();
+    const pick = iData.data?.nhlDraftPick?.overall || null;
+    const position = pos;
+    const rows = (sData.data || []).filter(s => s.gamesPlayed > 0);
+    if (!rows.length) { msg.textContent = 'No stats found for this player.'; return; }
+    const stats = rows.map(s => {
+      const yr = parseInt((s.season?.slug||'').split('-')[0]) || 2020;
+      const lg = s.league?.slug || 'other';
+      const gp = s.gamesPlayed || 0;
+      const pts = (s.goals||0) + (s.assists||0);
+      return { yr, lg, gp, pts };
+    }).sort((a,b) => a.yr - b.yr);
+    // Map to the loadFromEP-compatible format and call loadPlayer
+    const mapped = stats.map(s => ({
+      dl: 'D0', lg: s.lg, gp: s.gp, pts: s.pts,
+      nhle: calcNHLe(s.pts, s.gp, s.lg), preSigning: true
+    }));
+    loadPlayer({ name, pos: position, pick, stats: mapped, source: 'EP' });
+    msg.textContent = `✓ ${name} loaded — ${mapped.length} seasons`;
+  } catch(e) {
+    msg.textContent = 'Error loading stats: ' + e.message;
+  }
+}
+// ─────────────────────────────────────────────────────────────
+
 </script>
 </body>
 </html>
